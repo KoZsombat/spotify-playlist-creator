@@ -1,0 +1,5 @@
+* text=auto
+
+# Container scripts must keep LF endings on every platform.
+*.sh text eol=lf
+Dockerfile text eol=lf

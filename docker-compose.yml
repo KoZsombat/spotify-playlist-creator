@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: playlist-creator-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: playlist
+      POSTGRES_PASSWORD: playlist
+      POSTGRES_DB: playlist_creator
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U playlist -d playlist_creator"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  pgdata:
