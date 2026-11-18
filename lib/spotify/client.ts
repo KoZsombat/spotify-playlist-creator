@@ -1,6 +1,5 @@
 import { mapLimit } from "../async";
 import type {
-  SpotifyArtist,
   SpotifyPage,
   SpotifyPlaylist,
   SpotifyPlaylistTrackItem,
@@ -8,6 +7,11 @@ import type {
 } from "./types";
 
 const API = "https://api.spotify.com/v1";
+
+/** Spotify caps search pages at 10 results since the February 2026 migration. */
+const SEARCH_PAGE_LIMIT = 10;
+/** Playlist item pages cap at 50. */
+const PLAYLIST_PAGE_LIMIT = 50;
 
 export class SpotifyError extends Error {
   constructor(
@@ -35,7 +39,8 @@ async function spotifyFetch<T>(
     if (value !== undefined && value !== "") url.searchParams.set(key, String(value));
   }
 
-  for (let attempt = 0; attempt < 3; attempt++) {
+  const MAX_ATTEMPTS = 4;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     const response = await fetch(url, {
       method,
       headers: {
@@ -46,10 +51,23 @@ async function spotifyFetch<T>(
       cache: "no-store",
     });
 
-    if (response.status === 429 && attempt < 2) {
+    if (response.status === 429) {
+      const payload = (await response.clone().json().catch(() => null)) as {
+        error?: { reason?: string };
+      } | null;
+      if (payload?.error?.reason === "QUOTA_EXCEEDED") {
+        throw new SpotifyError(
+          429,
+          "Spotify's daily API quota is exhausted. Try again later or use fewer tracks.",
+        );
+      }
+      if (attempt === MAX_ATTEMPTS - 1) {
+        throw new SpotifyError(429, "Spotify is rate limiting. Try again in a moment.");
+      }
+      // Big playlists fan out into many searches; wait out the reported window.
       const retryAfter = Number(response.headers.get("Retry-After") ?? "1");
       const { promise, resolve } = Promise.withResolvers<void>();
-      setTimeout(resolve, Math.min(retryAfter, 5) * 1000);
+      setTimeout(resolve, Math.min(Math.max(retryAfter, 1), 20) * 1000);
       await promise;
       continue;
     }
@@ -66,10 +84,11 @@ async function spotifyFetch<T>(
         throw new SpotifyError(401, "Spotify rejected the token. Sign in again.");
       }
       if (response.status === 403) {
-        throw new SpotifyError(
-          403,
-          `${message}. The Spotify app may be in development mode without this account allowlisted, or the scope was not granted.`,
-        );
+        const hint =
+          message.toLowerCase() === "insufficient client scope"
+            ? "Sign out and sign in again to grant the new permission."
+            : "The Spotify app may be in development mode without this account allowlisted, or the endpoint is unavailable to it.";
+        throw new SpotifyError(403, `${message}. ${hint}`);
       }
       throw new SpotifyError(response.status, message);
     }
@@ -84,52 +103,43 @@ async function spotifyFetch<T>(
 export async function searchTracks(
   token: string,
   query: string,
-  { limit = 50, offset = 0, market }: { limit?: number; offset?: number; market?: string } = {},
+  { limit = 10, offset = 0, market }: { limit?: number; offset?: number; market?: string } = {},
 ): Promise<SpotifyTrack[]> {
-  if (!query.trim()) return [];
-  const data = await spotifyFetch<{
-    tracks?: { items: (SpotifyTrack | null)[] };
-  }>(token, "/search", {
-    query: { q: query, type: "track", limit: Math.min(limit, 50), offset, market },
-  });
-  return (data.tracks?.items ?? []).filter(
-    (track): track is SpotifyTrack => Boolean(track?.id),
-  );
+  if (!query.trim() || limit <= 0) return [];
+  const tracks: SpotifyTrack[] = [];
+  let cursor = offset;
+  while (tracks.length < limit) {
+    const pageSize = Math.min(SEARCH_PAGE_LIMIT, limit - tracks.length);
+    const data = await spotifyFetch<{
+      tracks?: { items: (SpotifyTrack | null)[] };
+    }>(token, "/search", {
+      query: { q: query, type: "track", limit: pageSize, offset: cursor, market },
+    });
+    const items = (data.tracks?.items ?? []).filter(
+      (track): track is SpotifyTrack => Boolean(track?.id),
+    );
+    tracks.push(...items);
+    if (items.length < pageSize) break;
+    cursor += pageSize;
+  }
+  return tracks;
 }
 
+/** Batch endpoints were removed in February 2026; fetch each id separately. */
 export async function getTracks(
   token: string,
   ids: readonly string[],
 ): Promise<SpotifyTrack[]> {
   const unique = [...new Set(ids)].filter(Boolean);
-  const chunks: string[][] = [];
-  for (let i = 0; i < unique.length; i += 50) chunks.push(unique.slice(i, i + 50));
-  const responses = await mapLimit(chunks, 3, (chunk) =>
-    spotifyFetch<{ tracks: (SpotifyTrack | null)[] }>(token, "/tracks", {
-      query: { ids: chunk.join(",") },
-    }),
-  );
-  return responses
-    .flatMap((response) => response.tracks)
-    .filter((track): track is SpotifyTrack => Boolean(track?.id));
-}
-
-export async function getArtists(
-  token: string,
-  ids: readonly string[],
-): Promise<SpotifyArtist[]> {
-  const unique = [...new Set(ids)].filter(Boolean);
-  if (unique.length === 0) return [];
-  const chunks: string[][] = [];
-  for (let i = 0; i < unique.length; i += 50) chunks.push(unique.slice(i, i + 50));
-  const responses = await mapLimit(chunks, 3, (chunk) =>
-    spotifyFetch<{ artists: (SpotifyArtist | null)[] }>(token, "/artists", {
-      query: { ids: chunk.join(",") },
-    }),
-  );
-  return responses
-    .flatMap((response) => response.artists)
-    .filter((artist): artist is SpotifyArtist => Boolean(artist?.id));
+  const tracks = await mapLimit(unique, 6, async (id) => {
+    try {
+      return await spotifyFetch<SpotifyTrack>(token, `/tracks/${id}`);
+    } catch (error) {
+      if (error instanceof SpotifyError && error.status === 404) return null;
+      throw error;
+    }
+  });
+  return tracks.filter((track): track is SpotifyTrack => Boolean(track?.id));
 }
 
 export async function getMe(token: string): Promise<{
@@ -159,16 +169,31 @@ export async function getPlaylistTracks(
   playlistId: string,
   { limit = 100, offset = 0 } = {},
 ): Promise<SpotifyPage<SpotifyPlaylistTrackItem>> {
-  const data = await spotifyFetch<{
-    items: SpotifyPlaylistTrackItem[];
-    total: number;
-    next: string | null;
-    offset: number;
-    limit: number;
-  }>(token, `/playlists/${playlistId}/tracks`, {
-    query: { limit, offset, additional_types: "track" },
-  });
-  return data;
+  const items: SpotifyPlaylistTrackItem[] = [];
+  let cursor = offset;
+  let total = 0;
+  while (items.length < limit) {
+    const pageSize = Math.min(PLAYLIST_PAGE_LIMIT, limit - items.length);
+    const data = await spotifyFetch<{
+      items: ({
+        added_at?: string | null;
+        item?: SpotifyTrack | null;
+        track?: SpotifyTrack | null;
+      } | null)[];
+      total: number;
+    }>(token, `/playlists/${playlistId}/items`, {
+      query: { limit: pageSize, offset: cursor },
+    });
+    total = data.total;
+    for (const entry of data.items) {
+      if (!entry) continue;
+      const track = entry.item ?? entry.track ?? null;
+      if (track) items.push({ added_at: entry.added_at ?? null, track });
+    }
+    if (data.items.length < pageSize) break;
+    cursor += pageSize;
+  }
+  return { items, total, next: null, offset, limit };
 }
 
 export async function getLikedTracks(
@@ -180,7 +205,6 @@ export async function getLikedTracks(
 
 export async function createPlaylist(
   token: string,
-  userId: string,
   input: {
     name: string;
     description?: string;
@@ -188,7 +212,7 @@ export async function createPlaylist(
     collaborative?: boolean;
   },
 ): Promise<SpotifyPlaylist> {
-  return spotifyFetch(token, `/users/${encodeURIComponent(userId)}/playlists`, {
+  return spotifyFetch(token, "/me/playlists", {
     method: "POST",
     body: {
       name: input.name,
@@ -208,7 +232,7 @@ export async function addPlaylistItems(
   for (let i = 0; i < uris.length; i += 100) {
     const data = await spotifyFetch<{ snapshot_id: string }>(
       token,
-      `/playlists/${playlistId}/tracks`,
+      `/playlists/${playlistId}/items`,
       {
         method: "POST",
         body: { uris: uris.slice(i, i + 100) },
@@ -249,10 +273,10 @@ export async function removePlaylistItems(
   for (let i = 0; i < uris.length; i += 100) {
     const data = await spotifyFetch<{ snapshot_id: string }>(
       token,
-      `/playlists/${playlistId}/tracks`,
+      `/playlists/${playlistId}/items`,
       {
         method: "DELETE",
-        body: { tracks: uris.slice(i, i + 100).map((uri) => ({ uri })) },
+        body: { items: uris.slice(i, i + 100).map((uri) => ({ uri })) },
       },
     );
     snapshotId = data?.snapshot_id ?? snapshotId;
@@ -264,7 +288,8 @@ export async function unfollowPlaylist(
   token: string,
   playlistId: string,
 ): Promise<void> {
-  await spotifyFetch(token, `/playlists/${playlistId}/followers`, {
+  await spotifyFetch(token, "/me/library", {
     method: "DELETE",
+    query: { uris: `spotify:playlist:${playlistId}` },
   });
 }

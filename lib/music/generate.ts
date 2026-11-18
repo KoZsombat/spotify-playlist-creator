@@ -6,7 +6,6 @@ import { fallbackQuery, planQueries, type QueryPlan } from "./planner";
 
 export type TrackSource = {
   search(query: string, limit: number): Promise<SpotifyTrack[]>;
-  getArtistGenres(artistIds: readonly string[]): Promise<Map<string, string[]>>;
 };
 
 export type GenerateOptions = {
@@ -40,8 +39,6 @@ type Scored = { track: SpotifyTrack; score: number; groups: Candidate["groups"] 
 const GROUP_ORDER: QueryPlan["group"][] = [
   "seed",
   "genre",
-  "mood",
-  "occasion",
   "language",
   "keyword",
   "era",
@@ -88,9 +85,6 @@ function isAllowed(track: SpotifyTrack, intent: Intent): boolean {
 }
 
 type ScoreContext = {
-  terms: string[];
-  genreTerms: string[];
-  artistGenres: Map<string, string[]>;
   seedArtists: Set<string>;
   seedAlbums: Set<string>;
   intent: Intent;
@@ -105,36 +99,16 @@ function scoreCandidate(candidate: Candidate, context: ScoreContext): number {
   for (const weight of groups.values()) groupTotal += weight;
   score += Math.min(groupTotal, 1.9);
 
-  const genreStrings = track.artists.flatMap(
-    (artist) => context.artistGenres.get(artist.id) ?? [],
-  );
-  const haystack = normalizeName(
-    `${track.name} ${track.album.name} ${track.artists.map((artist) => artist.name).join(" ")} ${genreStrings.join(" ")}`,
-  );
-
-  let hits = 0;
-  for (const term of context.terms) {
-    if (hits >= 8) break;
-    if (containsPhrase(haystack, term)) hits++;
-  }
-  score += hits * 0.4;
-
-  let genreOverlap = 0;
-  for (const genre of new Set(genreStrings)) {
-    const lower = normalizeName(genre);
-    if (context.genreTerms.some((term) => lower.includes(normalizeName(term)))) {
-      genreOverlap++;
-    }
-  }
-  score += Math.min(genreOverlap, 4) * 0.45;
-
   const year = Number((track.album.release_date ?? "").slice(0, 4));
   if (intent.yearRange && Number.isFinite(year) && year > 1900) {
     const [start, end] = intent.yearRange;
     score += year >= start && year <= end ? 0.5 : -0.8;
   }
 
-  score += (1 - Math.abs(track.popularity - intent.popularityTarget) / 100) * 0.6;
+  // Track popularity was removed from the Web API in February 2026.
+  if (typeof track.popularity === "number") {
+    score += (1 - Math.abs(track.popularity - intent.popularityTarget) / 100) * 0.6;
+  }
 
   const artistName = normalizeName(primaryArtist(track)?.name ?? "");
   if (context.seedArtists.has(artistName)) score += 0.85;
@@ -149,10 +123,6 @@ function scoreCandidate(candidate: Candidate, context: ScoreContext): number {
   }
 
   score += 0.3 * (1 - Math.min(candidate.bestRank, 50) / 50);
-
-  if (intent.instrumental && normalizeName(track.name).includes("instrumental")) {
-    score += 0.2;
-  }
 
   return score;
 }
@@ -208,10 +178,11 @@ export async function generateTracks({
   const seedArtistNames = [...seedArtists].filter(Boolean);
   const seedAlbums = new Set(seeds.map((track) => normalizeName(track.album.name)));
 
-  const plans = planQueries(intent, seedArtistNames);
+  const plans = planQueries(intent, seedArtistNames, limit);
   const responses = await mapLimit(plans, concurrency, async (plan) => {
     try {
-      return { plan, tracks: await source.search(plan.q, 50) };
+      // Era slices only widen the pool; 50 hits each halves the request count.
+      return { plan, tracks: await source.search(plan.q, plan.group === "era" ? 50 : 100) };
     } catch (error) {
       // A single failed query should not sink the whole generation.
       if (plan === plans[0]) throw error;
@@ -248,38 +219,13 @@ export async function generateTracks({
     isAllowed(candidate.track, intent),
   );
 
-  const artistIds = [...new Set(allowed.flatMap((c) => c.track.artists.map((a) => a.id)))];
-  const artistGenres = await source.getArtistGenres(artistIds.slice(0, 250));
-
-  // Artist genres are authoritative for vetoes like "no rock"; the text check
-  // above can only see titles and names.
-  const excludeTags = intent.excludeTags.map(normalizeName).filter(Boolean);
-  const allowedAfterGenres = allowed.filter((candidate) => {
-    if (excludeTags.length === 0) return true;
-    const genres = candidate.track.artists
-      .flatMap((artist) => artistGenres.get(artist.id) ?? [])
-      .map(normalizeName);
-    return !genres.some((genre) => excludeTags.some((tag) => genre.includes(tag)));
-  });
-
-  const genreTerms = [...intent.genres, ...intent.moods];
   const context: ScoreContext = {
-    terms: [
-      ...intent.genres,
-      ...intent.moods,
-      ...intent.occasions,
-      ...intent.languages,
-      ...intent.keywords,
-      ...intent.includeArtists,
-    ].filter(Boolean),
-    genreTerms,
-    artistGenres,
     seedArtists,
     seedAlbums,
     intent,
   };
 
-  const scored: Scored[] = allowedAfterGenres
+  const scored: Scored[] = allowed
     .map((candidate) => ({
       track: candidate.track,
       groups: candidate.groups,
@@ -335,7 +281,7 @@ export async function generateTracks({
 
   if (chosen.length < limit) {
     try {
-      const extra = await source.search(fallbackQuery(intent), 50);
+      const extra = await source.search(fallbackQuery(intent), 100);
       candidateCount += extra.length;
       const extraScored: Scored[] = extra
         .filter((track) => !seedIds.has(track.id) && isAllowed(track, intent))
@@ -344,7 +290,7 @@ export async function generateTracks({
           groups: new Map<QueryPlan["group"], number>([["fallback", 0.6]]),
           score: 0,
         }))
-        .sort((a, b) => b.track.popularity - a.track.popularity);
+        .sort((a, b) => (b.track.popularity ?? 0) - (a.track.popularity ?? 0));
       for (const item of extraScored) {
         if (chosen.length >= limit) break;
         addTrack(item, Number.POSITIVE_INFINITY);

@@ -168,7 +168,7 @@ export function PlaylistEditor({ playlist }: { playlist: PlaylistDetailDTO }) {
             <label className="block">
               <span className="label">Visibility</span>
               <select
-                className="input"
+                className="select"
                 value={isPublic ? "public" : "private"}
                 onChange={(event) => setIsPublic(event.target.value === "public")}
               >
@@ -179,7 +179,7 @@ export function PlaylistEditor({ playlist }: { playlist: PlaylistDetailDTO }) {
             <label className="block">
               <span className="label">Collaborative</span>
               <select
-                className="input"
+                className="select"
                 value={collaborative ? "yes" : "no"}
                 onChange={(event) => setCollaborative(event.target.value === "yes")}
                 disabled={isPublic}

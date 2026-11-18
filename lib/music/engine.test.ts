@@ -62,7 +62,7 @@ function fakeSource(calls: string[] = []): TrackSource {
     async search(query, limit) {
       calls.push(query);
       const tokens = query
-        .replace(/\b\w+:\S+/g, " ")
+        .replace(/\b\w+:/g, " ")
         .replace(/"/g, " ")
         .toLowerCase()
         .split(/[^\p{L}\p{N}]+/u)
@@ -80,16 +80,6 @@ function fakeSource(calls: string[] = []): TrackSource {
           .join(" ")} ${track.genres.join(" ")}`.toLowerCase();
         return tokens.some((token) => haystack.includes(token));
       }).slice(0, limit);
-    },
-    async getArtistGenres(artistIds) {
-      const map = new Map<string, string[]>();
-      for (const id of artistIds) {
-        const track = CATALOG.find((candidate) =>
-          candidate.artists.some((artist) => artist.id === id),
-        );
-        map.set(id, track?.genres ?? []);
-      }
-      return map;
     },
   };
 }
@@ -185,9 +175,6 @@ describe("generateTracks", () => {
     const source: TrackSource = {
       async search() {
         return CATALOG.slice(0, 5);
-      },
-      async getArtistGenres() {
-        return new Map();
       },
     };
     const result = await generateTracks({ intent, source, limit: 50 });

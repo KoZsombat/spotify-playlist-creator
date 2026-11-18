@@ -44,6 +44,7 @@ export function CreateWizard() {
   const [brief, setBrief] = useState("");
   const [seeds, setSeeds] = useState<TrackDTO[]>([]);
   const [includeSeeds, setIncludeSeeds] = useState(true);
+  const [size, setSize] = useState(50);
   const [library, setLibrary] = useState<PlaylistSummaryDTO[] | null>(null);
   const [appendTo, setAppendTo] = useState("");
 
@@ -100,7 +101,7 @@ export function CreateWizard() {
           description: brief,
           seedIds: seeds.map((seed) => seed.id),
           includeSeeds,
-          limit: 50,
+          limit: size,
         }),
       });
       setResult(data);
@@ -155,6 +156,7 @@ export function CreateWizard() {
     setBrief("");
     setSeeds([]);
     setIncludeSeeds(true);
+    setSize(50);
     setResult(null);
     setTracks([]);
     setCreated(null);
@@ -366,7 +368,8 @@ export function CreateWizard() {
                 </h2>
                 <p className="text-xs text-muted">
                   Mentions of genres, moods, decades, languages and vetoes are parsed
-                  live. Loose descriptions work too.
+                  live. Searches use genre tags, eras, languages and artists: Spotify
+                  no longer exposes moods, so mood words only shape the brief.
                 </p>
               </div>
 
@@ -417,11 +420,35 @@ export function CreateWizard() {
 
           {step === 3 ? (
             <div className="space-y-5">
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-bg/40 px-4 py-3">
+                <div>
+                  <p className="text-xs font-medium">Playlist size</p>
+                  <p className="text-[11px] text-muted">10–200 tracks</p>
+                </div>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={10}
+                    max={200}
+                    step={10}
+                    value={size}
+                    aria-label="Playlist size"
+                    className="input w-24 text-right font-mono"
+                    onChange={(event) => {
+                      const value = Number(event.target.value);
+                      if (!Number.isFinite(value)) return;
+                      setSize(Math.min(200, Math.max(10, Math.round(value))));
+                    }}
+                  />
+                  <span className="text-[11px] text-muted">tracks</span>
+                </label>
+              </div>
+
               {tracks.length === 0 ? (
                 <div className="space-y-4">
                   <div>
                     <h2 className="text-lg font-semibold tracking-tight">
-                      Ready to build {50} tracks
+                      Ready to build {size} tracks
                     </h2>
                     <p className="text-xs text-muted">
                       {seeds.length > 0
@@ -443,7 +470,7 @@ export function CreateWizard() {
                     />
                     <span className="text-xs text-muted">
                       Include my {seeds.length} pick{seeds.length === 1 ? "" : "s"} in the
-                      final 50
+                      final {size}
                     </span>
                   </label>
 
@@ -458,7 +485,7 @@ export function CreateWizard() {
                     ) : (
                       <Wand2 className="size-4" />
                     )}
-                    {generating ? "Digging through Spotify…" : "Generate 50 tracks"}
+                    {generating ? "Digging through Spotify…" : `Generate ${size} tracks`}
                   </button>
                 </div>
               ) : (
@@ -524,7 +551,7 @@ export function CreateWizard() {
                     <label className="block">
                       <span className="label">Destination</span>
                       <select
-                        className="input"
+                        className="select"
                         value={appendTo}
                         onChange={(event) => setAppendTo(event.target.value)}
                       >

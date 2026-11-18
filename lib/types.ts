@@ -7,7 +7,6 @@ export type TrackDTO = {
   albumImage: string | null;
   durationMs: number;
   explicit: boolean;
-  popularity: number;
   year: number | null;
   url: string;
   uri: string;
@@ -42,7 +41,7 @@ export type Intent = {
   languages: string[];
   keywords: string[];
   excludeKeywords: string[];
-  /** Genres/moods/occasions the user vetoed; matched against artist genres too. */
+  /** Genres/moods/occasions the user vetoed; matched against titles, albums and artists. */
   excludeTags: string[];
   includeArtists: string[];
   excludeArtists: string[];

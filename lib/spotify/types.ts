@@ -24,21 +24,12 @@ export type SpotifyTrack = {
   uri: string;
   duration_ms: number;
   explicit: boolean;
-  popularity: number;
+  /** Removed from the Web API in February 2026; extended-quota apps still get it. */
+  popularity?: number;
   artists: SpotifyArtistRef[];
   album: SpotifyAlbumRef;
   external_urls?: { spotify?: string };
   is_local?: boolean;
-};
-
-export type SpotifyArtist = {
-  id: string;
-  name: string;
-  genres: string[];
-  popularity: number;
-  images: SpotifyImage[];
-  uri: string;
-  external_urls?: { spotify?: string };
 };
 
 export type SpotifyPlaylist = {
@@ -50,7 +41,10 @@ export type SpotifyPlaylist = {
   owner: { id: string; display_name: string | null };
   images: SpotifyImage[] | null;
   external_urls?: { spotify?: string };
-  tracks: { total: number; href?: string };
+  /** Contents are only included for playlists the user owns or collaborates on. */
+  items?: { total: number; href?: string } | null;
+  /** Pre-February-2026 name for `items`; still returned to extended-quota apps. */
+  tracks?: { total: number; href?: string } | null;
   snapshot_id?: string;
 };
 

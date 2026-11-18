@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { PlayTrackButton } from "@/components/track-player";
 import type { TrackDTO } from "@/lib/types";
 import { formatDuration } from "@/lib/client-utils";
 
@@ -18,6 +19,7 @@ export function TrackRow({
           {index}
         </span>
       ) : null}
+      <PlayTrackButton track={track} size="md" />
       <div className="size-10 shrink-0 overflow-hidden rounded-md bg-surface-3">
         {track.albumImage ? (
           // eslint-disable-next-line @next/next/no-img-element

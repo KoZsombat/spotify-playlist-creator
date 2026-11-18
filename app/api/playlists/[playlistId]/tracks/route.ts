@@ -15,7 +15,7 @@ export const runtime = "nodejs";
 const ID = /^[A-Za-z0-9]{22}$/;
 
 const bodySchema = z.object({
-  trackIds: z.array(z.string().regex(ID, "Invalid track id")).min(1).max(100),
+  trackIds: z.array(z.string().regex(ID, "Invalid track id")).min(1).max(200),
 });
 
 async function refreshCount(
@@ -24,10 +24,9 @@ async function refreshCount(
   playlistId: string,
 ): Promise<number> {
   const playlist = await getPlaylist(token, playlistId);
-  await updateCreationMeta(userId, playlistId, {
-    trackCount: playlist.tracks.total,
-  });
-  return playlist.tracks.total;
+  const trackCount = playlist.items?.total ?? playlist.tracks?.total ?? 0;
+  await updateCreationMeta(userId, playlistId, { trackCount });
+  return trackCount;
 }
 
 export async function POST(

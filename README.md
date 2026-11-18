@@ -8,22 +8,32 @@ Built with Next.js 15 (App Router), Better Auth, Postgres, Tailwind v4 and Bun.
 ## What it actually does
 
 Spotify retired `/recommendations`, `/artists/{id}/related-artists` and audio features for new
-API apps in November 2024. This app therefore **does not call them**. Generation is search-driven:
+API apps in November 2024, and the February 2026 development-mode migration removed batch
+fetches, track popularity, artist genres and the `/playlists/{id}/tracks` aliases. This app only
+calls endpoints that are still available. Generation is search-driven:
 
 1. **Interpret** — a deterministic parser turns free text into intent: genres, moods, occasions,
    languages, decades, energy, popularity target, instrumental/clean filters, named artists and
    vetoes (`no rock`, `nothing too upbeat`). An optional LLM pass refines the result when
    `LLM_API_KEY` is set; any failure silently falls back to the local parser.
-2. **Plan** — intent becomes up to 18 weighted Spotify search queries (genre phrases, mood/hook
-   combinations, seed-artist queries, era filters, a deep-cut `tag:hipster` pass).
-3. **Collect & score** — up to ~900 candidate tracks per generation, scored on query-group
-   agreement, text/genre overlap, era fit, popularity fit, seed-artist affinity and search rank.
+2. **Plan** — intent becomes up to 18 weighted Spotify queries. Genres use the `genre:` field
+   filter, so a tag never turns into tracks that merely spell the word in their title or artist
+   name; era filters, seed-artist queries and a deep-cut `tag:hipster` pass widen the pool. Mood
+   and occasion words are **not** sent to search — Spotify has no mood metadata left, so they
+   would only match song titles. Search runs on a client-credentials token with an explicit
+   market (the requested language's home market, else `SPOTIFY_MARKET`, default `US`), because a
+   user token ignores `market` and ranks by the listener's country.
+3. **Collect & score** — up to 100 catalog hits per query (Spotify caps a search at 10 results
+   per page and 100 per query, so the client paginates with `offset`), scored on query-group
+   agreement, era fit, seed-artist affinity and search rank. Track titles and artist names are
+   never scored against the brief's words.
 4. **Select** — duplicates, local files, explicit tracks (when clean was requested) and vetoed
-   genres are filtered. Artist genres are fetched in batch, so "no rock" is enforced against
-   artist tags, not only titles. Two tracks per artist by default, relaxed only when the pool is
-   thin. The final list is interleaved across query groups so vibes do not clump.
-5. **Review & publish** — nothing is written to Spotify until the user presses create. Then the
-   app creates the playlist, adds up to 100 tracks per request, and stores a local record.
+   genres are filtered from titles, albums and artist names. Two tracks per artist by default,
+   relaxed only when the pool is thin. The final list is interleaved across query groups so
+   vibes do not clump.
+5. **Review & publish** — playlist size is configurable from 10 to 200 tracks; nothing is written
+   to Spotify until the user presses create. Then the app creates the playlist, adds at most 100
+   tracks per request, and stores a local record.
 
 ## Prerequisites
 
@@ -39,8 +49,8 @@ API apps in November 2024. This app therefore **does not call them**. Generation
    Spotify rejects `localhost` redirect URIs — use the loopback IP.
 3. Open the app → **Settings** and copy **Client ID** and **Client Secret**.
 4. Still in **Settings → User Management**, add the Spotify account(s) that will sign in.
-   New apps are in development mode and capped at 25 allowlisted users. For more users you must
-   request a quota extension from Spotify.
+   New apps are in development mode and capped at 5 allowlisted users. For more users you must
+   request an extended quota from Spotify.
 
 ## 2. Configure environment
 
@@ -55,6 +65,12 @@ DATABASE_URL=postgres://playlist:playlist@127.0.0.1:5433/playlist_creator
 ```
 
 Generate a secret with `bun -e 'console.log(crypto.randomUUID().replaceAll("-","") + crypto.randomUUID().replaceAll("-",""))'`.
+
+Optional market override for search (used when the brief names no language):
+
+```dotenv
+SPOTIFY_MARKET=US
+```
 
 Optional, for better interpretation of unusual descriptions:
 
@@ -183,9 +199,19 @@ app/api/health/route.ts  Launchpad HTTP health probe (DB-aware)
 
 ## Known limits
 
-- Spotify search returns at most 50 tracks per request; the generator caps work at ~18 queries.
-  Extremely narrow briefs can produce fewer than 50 unique tracks — the UI shows the real count.
-- Artist genre tags come from Spotify and can be sparse for new or niche artists, so vetoes are
-  best-effort beyond title/album/artist text filtering.
-- Development mode caps sign-ins at 25 allowlisted Spotify accounts.
+- Spotify search pages cap at 10 results, a query returns at most 100 hits, and playlist item
+  pages cap at 50; the client paginates. Playlists can request 10–200 tracks, but narrow briefs
+  can still yield fewer — the UI shows the real count.
+- Development mode ships a small daily API quota (`QUOTA_EXCEEDED`). Search results are cached
+  for five minutes and large playlists spread across era slices, but heavy use can still exhaust
+  it; the app then reports the quota and when it recovers.
+- Track popularity and artist genres are no longer in the API for development-mode apps, so
+  popularity fit and genre-tag vetoes work only from text (titles, albums, artist names).
+- Moods and occasions steer nothing but the brief: without audio features there is no way to
+  rank by them, and as text queries they only surface songs named after the word.
+- Search needs `SPOTIFY_CLIENT_ID`/`SPOTIFY_CLIENT_SECRET` (client-credentials token) and a
+  market: `SPOTIFY_MARKET` (default `US`) is used when the brief names no language.
+- Playlist contents are readable only for playlists you own or collaborate on; followed
+  playlists appear as metadata but cannot be used as a track source.
+- Development mode allows 5 allowlisted Spotify accounts (grandfathered apps keep more).
 - The app is single-tenant per signed-in user; there is no admin surface.

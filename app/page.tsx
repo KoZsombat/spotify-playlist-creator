@@ -26,7 +26,7 @@ const STEPS = [
   },
   {
     title: "Approve and publish",
-    body: "Get 50 tracks, drop what you do not like, then create the playlist on your account.",
+    body: "Pick a size from 10 to 200, drop what you do not like, then create the playlist on your account.",
   },
 ];
 
@@ -34,12 +34,12 @@ const FEATURES = [
   {
     icon: Wand2,
     title: "Understands intent, not just keywords",
-    body: "Genres, moods, decades, languages, activities and vetoes (“no rock”, “clean only”) are parsed into a search plan.",
+    body: "Genres, decades, languages, named artists and vetoes (“no rock”, “clean only”) are parsed into Spotify genre and era filters.",
   },
   {
     icon: ShieldCheck,
     title: "Your vetoes are enforced",
-    body: "Negated genres are filtered against artist genre tags, not only titles, so a stray metal track cannot slip in.",
+    body: "Vetoes (“no rock”, “clean only”) filter titles, albums, artists and explicit flags before anything reaches the list.",
   },
   {
     icon: Users,

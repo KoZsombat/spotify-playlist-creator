@@ -5,6 +5,7 @@ import { generateTracks } from "@/lib/music/generate";
 import { interpretDescription } from "@/lib/music/interpret";
 import { getTracks, SpotifyError } from "@/lib/spotify/client";
 import { toTrackDTO } from "@/lib/spotify/dto";
+import { marketForIntent } from "@/lib/spotify/market";
 import { spotifyTrackSource, requireSpotify, toHttpError } from "@/lib/spotify/provider";
 
 export const runtime = "nodejs";
@@ -16,7 +17,7 @@ const bodySchema = z.object({
   description: z.string().trim().min(3, "Describe the music first").max(1200),
   seedIds: z.array(z.string().regex(TRACK_ID, "Invalid track id")).max(20).default([]),
   includeSeeds: z.boolean().default(true),
-  limit: z.number().int().min(10).max(100).default(50),
+  limit: z.number().int().min(10).max(200).default(50),
 });
 
 export async function POST(request: Request) {
@@ -29,7 +30,7 @@ export async function POST(request: Request) {
 
     const generated = await generateTracks({
       intent: interpreted.intent,
-      source: spotifyTrackSource(token),
+      source: spotifyTrackSource(marketForIntent(interpreted.intent)),
       seeds,
       limit: body.limit,
       includeSeeds: body.includeSeeds,

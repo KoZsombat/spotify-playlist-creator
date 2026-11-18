@@ -10,7 +10,6 @@ import {
   PHRASE_STOP,
   POPULARITY_WORDS,
   STOPWORDS,
-  defaultQueries,
   type LexEntry,
 } from "./lexicon";
 
@@ -237,8 +236,15 @@ export function interpretHeuristic(description: string): Intent {
     entry.words.some((word) => containsPhrase(positive, word)),
   ).map((entry) => entry.label);
 
+  const languageWords = new Set(
+    LANGUAGE_WORDS.filter((entry) => languages.includes(entry.label)).flatMap((entry) =>
+      entry.words.map(normalize),
+    ),
+  );
   const keywords = extractKeywords(positive, claimed).filter(
-    (keyword) => !excludedLabels.has(keyword.toLowerCase()),
+    (keyword) =>
+      !excludedLabels.has(keyword.toLowerCase()) &&
+      !languageWords.has(normalize(keyword)),
   );
 
   const evidence: Intent["evidence"] = [
@@ -304,13 +310,3 @@ export function summarizeIntent(intent: Intent): string {
     : "Broad mix · nothing narrowed down yet";
 }
 
-/** Spotify search phrases for a label, falling back to the label itself. */
-export function queriesForLabel(label: string): string[] {
-  const target = normalize(label);
-  const entry = LEXICON.find(
-    (candidate) =>
-      normalize(candidate.label) === target ||
-      candidate.aliases.some((alias) => normalize(alias) === target),
-  );
-  return entry ? defaultQueries(entry) : [label];
-}

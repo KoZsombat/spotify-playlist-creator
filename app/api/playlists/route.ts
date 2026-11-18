@@ -5,7 +5,6 @@ import { jsonError, parseJson } from "@/lib/http";
 import {
   addPlaylistItems,
   createPlaylist,
-  getMe,
   getPlaylist,
   SpotifyError,
 } from "@/lib/spotify/client";
@@ -22,7 +21,7 @@ const createSchema = z.object({
   description: z.string().trim().max(300).default(""),
   isPublic: z.boolean().default(false),
   collaborative: z.boolean().default(false),
-  trackIds: z.array(z.string().regex(ID, "Invalid track id")).min(1).max(100),
+  trackIds: z.array(z.string().regex(ID, "Invalid track id")).min(1).max(200),
   appendTo: z.string().regex(ID, "Invalid playlist id").optional(),
   intent: z.unknown().optional(),
 });
@@ -46,8 +45,9 @@ export async function POST(request: Request) {
     if (body.appendTo) {
       const playlist = await getPlaylist(token, body.appendTo);
       await addPlaylistItems(token, body.appendTo, uris);
+      const existing = playlist.items?.total ?? playlist.tracks?.total ?? 0;
       await updateCreationMeta(user.id, body.appendTo, {
-        trackCount: playlist.tracks.total + uris.length,
+        trackCount: existing + uris.length,
       });
       return NextResponse.json({
         playlist: toPlaylistSummary(playlist),
@@ -56,8 +56,7 @@ export async function POST(request: Request) {
       });
     }
 
-    const me = await getMe(token);
-    const playlist = await createPlaylist(token, me.id, {
+    const playlist = await createPlaylist(token, {
       name: body.name,
       description: body.description,
       isPublic,

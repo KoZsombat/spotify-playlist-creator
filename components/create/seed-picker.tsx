@@ -1,7 +1,8 @@
 "use client";
 
 import { Heart, ListMusic, Loader2, Plus, Search, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { PlayTrackButton } from "@/components/track-player";
 import { api } from "@/lib/client-utils";
 import type { PlaylistSummaryDTO, TrackDTO } from "@/lib/types";
 
@@ -25,6 +26,7 @@ export function SeedPicker({
   const [selectedPlaylist, setSelectedPlaylist] = useState("");
   const [loadingSource, setLoadingSource] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (mode !== "search") return;
@@ -62,6 +64,12 @@ export function SeedPicker({
   const add = (track: TrackDTO) => {
     if (seeds.length >= MAX_SEEDS || isSelected(track.id)) return;
     onChange([...seeds, track]);
+    // Clear the query and its dropdown so the next pick starts fresh.
+    setQuery("");
+    setResults([]);
+    setSearching(false);
+    setError(null);
+    inputRef.current?.focus();
   };
 
   const remove = (id: string) => {
@@ -133,6 +141,7 @@ export function SeedPicker({
         <p className="truncate text-xs font-medium">{track.name}</p>
         <p className="truncate text-[11px] text-muted">{track.artists}</p>
       </div>
+      <PlayTrackButton track={track} />
       <button
         type="button"
         className="grid size-8 shrink-0 place-items-center rounded-full text-muted transition hover:bg-surface-3 hover:text-accent disabled:opacity-30"
@@ -183,6 +192,7 @@ export function SeedPicker({
                   <p className="truncate text-xs font-medium">{track.name}</p>
                   <p className="truncate text-[11px] text-muted">{track.artists}</p>
                 </div>
+                <PlayTrackButton track={track} />
                 <button
                   type="button"
                   aria-label={`Remove ${track.name}`}
@@ -234,6 +244,7 @@ export function SeedPicker({
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
           <input
+            ref={inputRef}
             className="input pl-9"
             placeholder="Search Spotify tracks…"
             value={query}
@@ -248,7 +259,10 @@ export function SeedPicker({
       {mode === "playlist" && !selectedPlaylist && libraryPlaylists ? (
         <div className="space-y-1">
           {libraryPlaylists.length === 0 ? (
-            <p className="text-xs text-muted">No playlists found.</p>
+            <p className="text-xs text-muted">
+              No playlists you own yet. Spotify only exposes tracks of playlists you
+              own or collaborate on.
+            </p>
           ) : (
             libraryPlaylists.map((playlist) => (
               <button
