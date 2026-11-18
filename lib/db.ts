@@ -8,11 +8,27 @@ const globalForDb = globalThis as unknown as { __pool?: Pool };
 /**
  * Single pool per process. Next.js dev reloads modules, so cache on globalThis
  * or every HMR pass leaks a pool.
+ *
+ * Launchpad passes the database password as PGPASSWORD instead of composing a
+ * DATABASE_URL: a generated password can contain @, /, :, # or % and would
+ * break URL parsing. `pg` reads the standard PG* variables on its own.
  */
 export function getPool(): Pool {
   if (!globalForDb.__pool) {
+    const connectionString = process.env.DATABASE_URL?.trim();
+    const usesPgEnv = Boolean(
+      process.env.PGHOST ||
+        process.env.PGPORT ||
+        process.env.PGUSER ||
+        process.env.PGPASSWORD ||
+        process.env.PGDATABASE,
+    );
     globalForDb.__pool = new Pool({
-      connectionString: process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL,
+      ...(connectionString
+        ? { connectionString }
+        : usesPgEnv
+          ? {}
+          : { connectionString: DEFAULT_DATABASE_URL }),
       max: 10,
     });
   }

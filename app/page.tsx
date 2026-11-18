@@ -53,6 +53,12 @@ const FEATURES = [
   },
 ];
 
+const PUBLIC_ORIGIN = (process.env.BETTER_AUTH_URL ?? "http://127.0.0.1:3000").replace(
+  /\/+$/,
+  "",
+);
+const SPOTIFY_REDIRECT_URI = `${PUBLIC_ORIGIN}/api/auth/callback/spotify`;
+
 export default async function LandingPage({
   searchParams,
 }: {
@@ -104,8 +110,9 @@ export default async function LandingPage({
 
             {error ? (
               <p className="mt-4 rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">
-                Spotify sign-in did not complete. Check that the redirect URI matches
-                exactly and that your account is allowlisted on the Spotify app.
+                Spotify sign-in did not complete. The Spotify app must list{" "}
+                <span className="font-mono">{SPOTIFY_REDIRECT_URI}</span> exactly and
+                allowlist this account.
               </p>
             ) : null}
           </div>
@@ -178,7 +185,7 @@ export default async function LandingPage({
                   <li>
                     2. Add redirect URI{" "}
                     <span className="font-mono text-accent-soft">
-                      http://127.0.0.1:3000/api/auth/callback/spotify
+                      {SPOTIFY_REDIRECT_URI}
                     </span>
                   </li>
                   <li>

@@ -49,7 +49,7 @@ calls endpoints that are still available. Generation is search-driven:
    Spotify rejects `localhost` redirect URIs — use the loopback IP.
 3. Open the app → **Settings** and copy **Client ID** and **Client Secret**.
 4. Still in **Settings → User Management**, add the Spotify account(s) that will sign in.
-   New apps are in development mode and capped at 5 allowlisted users. For more users you must
+   New apps are in development mode and capped at 25 allowlisted users. For more users you must
    request an extended quota from Spotify.
 
 ## 2. Configure environment
@@ -115,39 +115,86 @@ error otherwise.
 
 ## Deploy on Launchpad
 
-The repo ships a self-contained production stack: `Dockerfile`, `docker-compose.prod.yml`, a
-`/api/health` probe and a container entrypoint that runs migrations before `next start`.
+Launchpad (self-hosted, `KoZsombat/launchpad`) runs Docker on the VM, publishes containers
+through Traefik, and puts its own dashboard behind a Cloudflare Tunnel. This repository's
+production stack includes its **own `cloudflared` connector**, so the app route works even when
+the panel host has no tunnel pointing at it. The connector joins both the project network and
+Launchpad's external `web` network, so either ingress shape works:
 
-1. Push this repo to GitHub (the compose stack builds from the repo context).
-2. In Launchpad: **New app** → source **GitHub repository**, branch `main`.
-3. **Compose path:** `docker-compose.prod.yml` (Launchpad defaults to `docker-compose.yml`,
-   which is the local dev database only).
-4. Services and routing:
-   - `app` — publish it, subdomain e.g. `crate`, internal port `3000`, health path `/api/health`.
-   - `db` — do not publish.
-5. Project environment (all required; Launchpad fails the deploy if one is missing):
-   `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`,
-   `POSTGRES_PASSWORD`. Optional: `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`.
-6. `BETTER_AUTH_URL` must be the exact public origin, e.g. `https://crate.example.com`.
-   Better Auth derives the OAuth callback and secure-cookie prefix from it.
-7. In the Spotify dashboard, add the production redirect URI:
-   `https://crate.example.com/api/auth/callback/spotify` (keep the `127.0.0.1` one for local dev),
+```
+Dedicated tunnel:  Browser -> Cloudflare -> crate cloudflared -> app:3000
+Shared Launchpad:  Browser -> Cloudflare -> cloudflared -> traefik:80 -> app:3000
+```
+
+The production stack is `Dockerfile` + `docker-compose.prod.yml`: Next.js standalone output on
+Node, Postgres behind it, a `/api/health` probe, a `cloudflared` connector and an entrypoint that
+runs migrations before the server starts.
+
+### Create the Cloudflare tunnel
+
+1. Cloudflare Zero Trust → **Networks → Tunnels → Create a tunnel** → **Cloudflared**.
+2. Add a **Public Hostname**, either:
+   - `crate.<domain>` → **HTTP** → `app:3000` (dedicated tunnel), or
+   - keep Launchpad's wildcard `*.<domain>` → `http://traefik:80` and use that tunnel's token
+     (the app connector joins `web`, so it can reach Traefik too).
+3. Copy the token.
+
+`TUNNEL_TOKEN` is required by `docker-compose.prod.yml`. Reusing Launchpad's token is safe
+(Cloudflare supports multiple connectors) but redundant; a dedicated tunnel keeps this app's
+route independent from the panel.
+
+### Create the project
+
+1. Push this repo to GitHub (compose builds need a repository source).
+2. In Launchpad: **New app** → **Compose project** (or **Use docker-compose** on the GitHub
+   source tab). Repository URL, branch `main`.
+3. **Compose path:** `docker-compose.prod.yml`. Launchpad defaults to `docker-compose.yml`,
+   which is the local dev database only.
+4. **Scan compose**, then keep these routes:
+   - `app` — published, subdomain `crate`, internal port `3000`, health path `/api/health`.
+   - `db` — not published. Publishing it would make Traefik probe Postgres with an HTTP health
+     check.
+   - `cloudflared` — not published. Its port field is unused; leave the suggested default.
+5. Fill every required `${VAR}` under the project environment (Launchpad interpolates these into
+   the generated compose file; no `.env` is uploaded):
+   - `BETTER_AUTH_URL` — the exact public origin, e.g. `https://crate.example.com`
+   - `BETTER_AUTH_SECRET` — `openssl rand -base64 32`
+   - `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`
+   - `POSTGRES_PASSWORD` — `openssl rand -base64 32`; it is passed as `PGPASSWORD`, not inside a
+     connection URL, so symbols such as `/`, `+` and `=` are safe.
+   - `TUNNEL_TOKEN` — from the Cloudflare tunnel above.
+   - Optional: `SPOTIFY_MARKET`, `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`.
+6. In the Spotify dashboard add the production redirect URI
+   `https://crate.example.com/api/auth/callback/spotify` (keep the `127.0.0.1` one for local dev)
    and allowlist every Spotify account that will sign in (development mode caps it at 25).
+7. Deploy. The first deployment builds the image on the panel host; compose `build:` services
+   require a repository source, so do not switch the project to an inline compose file. A small
+   VM may need more RAM for `next build`.
+8. Check the deployment log for `Registered tunnel connection`; a wrong or expired token makes
+   `cloudflared` exit and the deploy fails.
+
+`BETTER_AUTH_URL` must match the public hostname exactly (`https://crate.<domain>`). Better Auth
+derives the OAuth callback, trusted origin and secure-cookie prefix from it, and the connector
+forwards the original `Host` header to `app:3000`.
 
 Notes:
 
-- Launchpad strips published ports and routes through Traefik; the compose file only `expose`s
-  3000 on purpose.
+- The compose file only `expose`s 3000; Launchpad strips published ports and adds the Traefik
+  labels and `web` network itself.
 - The `pgdata` volume is prefixed and preserved per Launchpad project, so redeploys keep accounts
   and saved creations.
 - The container applies Better Auth and app migrations on every start (idempotent) and exits
   non-zero if they fail, so a broken schema never reports healthy.
-- The image runs Next.js standalone output on `node:24-alpine` — about 80 MB uncompressed —
-  rather than shipping the dev dependency tree.
+- The image runs Next.js standalone output on `node:24-alpine` rather than shipping the dev
+  dependency tree.
+- Do **not** add a Cloudflare Access policy to the app hostname: Spotify redirects the browser
+  there, and the OAuth callback would stop at an Access login page. Protect only
+  `panel.<BASE_DOMAIN>`.
 
-Manual equivalent:
+Manual equivalent (the `web` network is shared with Launchpad/Traefik):
 
 ```bash
+docker network create web 2>/dev/null || true
 cp .env.prod.example .env.prod
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
 ```
@@ -213,5 +260,5 @@ app/api/health/route.ts  Launchpad HTTP health probe (DB-aware)
   market: `SPOTIFY_MARKET` (default `US`) is used when the brief names no language.
 - Playlist contents are readable only for playlists you own or collaborate on; followed
   playlists appear as metadata but cannot be used as a track source.
-- Development mode allows 5 allowlisted Spotify accounts (grandfathered apps keep more).
+- Development mode allows 25 allowlisted Spotify accounts (grandfathered apps keep more).
 - The app is single-tenant per signed-in user; there is no admin surface.

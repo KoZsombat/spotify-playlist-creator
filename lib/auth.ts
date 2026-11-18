@@ -1,7 +1,7 @@
-import { betterAuth } from "better-auth";
+import { betterAuth, type Auth, type BetterAuthOptions } from "better-auth";
 import { getPool } from "./db";
 
-export const SPOTIFY_SCOPES = [
+const SPOTIFY_SCOPES = [
   "user-read-email",
   "user-read-private",
   "playlist-read-private",
@@ -20,13 +20,13 @@ const baseURL = (process.env.BETTER_AUTH_URL ?? "http://127.0.0.1:3000").replace
   "",
 );
 
-export const auth = betterAuth({
+const authOptions = {
   baseURL,
   secret: process.env.BETTER_AUTH_SECRET,
   database: getPool(),
   account: {
     // Tokens are encrypted with BETTER_AUTH_SECRET; always read them through
-    // auth.api.getAccessToken instead of querying the account table.
+    // getAuth().api.getAccessToken instead of querying the account table.
     encryptOAuthTokens: true,
   },
   socialProviders: {
@@ -39,6 +39,19 @@ export const auth = betterAuth({
   session: {
     cookieCache: { enabled: true, maxAge: 5 * 60 },
   },
-});
+} satisfies BetterAuthOptions;
 
-export type AuthSession = typeof auth.$Infer.Session;
+export type AuthInstance = Auth<typeof authOptions>;
+
+let instance: AuthInstance | undefined;
+
+/**
+ * Better Auth validates its secret when the instance is created, and
+ * `next build` imports every route module in production mode without the
+ * runtime environment. Creating the instance lazily keeps the build working
+ * without baking a fake secret into the image.
+ */
+export function getAuth(): AuthInstance {
+  instance ??= betterAuth(authOptions);
+  return instance;
+}

@@ -1,8 +1,8 @@
 import { getMigrations } from "better-auth/db/migration";
-import { auth } from "../lib/auth";
+import { getAuth } from "../lib/auth";
 import { getPool, initAppSchema } from "../lib/db";
 
-const { toBeCreated, toBeAdded, runMigrations } = await getMigrations(auth.options);
+const { toBeCreated, toBeAdded, runMigrations } = await getMigrations(getAuth().options);
 
 if (toBeCreated.length > 0 || toBeAdded.length > 0) {
   console.log(

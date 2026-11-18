@@ -1,10 +1,13 @@
 import { headers } from "next/headers";
-import { auth } from "./auth";
+import { getAuth } from "./auth";
 import { getPool } from "./db";
 import { HttpError } from "./http";
 
 export async function getSession() {
-  return auth.api.getSession({ headers: await headers() });
+  // Read request state first: during `next build` this throws Next's dynamic
+  // usage error, so Better Auth is never initialized without a runtime secret.
+  const requestHeaders = await headers();
+  return getAuth().api.getSession({ headers: requestHeaders });
 }
 
 export async function requireUser() {
@@ -34,7 +37,7 @@ async function getSpotifyAccountId(userId: string): Promise<string> {
  */
 export async function getSpotifyAccessToken(userId: string): Promise<string> {
   const accountId = await getSpotifyAccountId(userId);
-  const token = await auth.api.getAccessToken({
+  const token = await getAuth().api.getAccessToken({
     body: { accountId, userId },
   });
   if (!token.accessToken) {

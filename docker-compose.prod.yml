@@ -1,16 +1,35 @@
 # Production stack for Launchpad (or plain `docker compose -f docker-compose.prod.yml up -d --build`).
-# Launchpad removes published ports and publishes the `app` service through Traefik.
+# Launchpad removes published ports and adds the Traefik labels and `web` network.
+# The stack runs its own cloudflared connector, so the app does not depend on a
+# tunnel on the panel host. Point the tunnel's public hostname at this stack:
+#   crate.<domain> -> http://app:3000        (dedicated tunnel)
+# or keep Launchpad's wildcard -> http://traefik:80 (the connector can reach both
+# `app` and `traefik`; a shared token is safe but adds a redundant connector).
 # Required project environment variables:
-#   BETTER_AUTH_URL  public URL, e.g. https://crate.example.com
+#   BETTER_AUTH_URL  exact public origin, e.g. https://crate.example.com
 #   BETTER_AUTH_SECRET
 #   SPOTIFY_CLIENT_ID
 #   SPOTIFY_CLIENT_SECRET
 #   POSTGRES_PASSWORD
-# Optional: LLM_BASE_URL, LLM_API_KEY, LLM_MODEL.
+#   TUNNEL_TOKEN     Cloudflare Tunnel token (Zero Trust -> Networks -> Tunnels)
+# Optional: SPOTIFY_MARKET (defaults to US), LLM_BASE_URL, LLM_API_KEY, LLM_MODEL.
 
 name: crate
 
 services:
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN}
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - default
+      - web
+
   app:
     build:
       context: .
@@ -25,7 +44,14 @@ services:
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
       SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID}
       SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET}
-      DATABASE_URL: postgres://crate:${POSTGRES_PASSWORD}@db:5432/crate
+      SPOTIFY_MARKET: ${SPOTIFY_MARKET:-US}
+      # Pass credentials through the standard PG* variables instead of a
+      # DATABASE_URL: the generated password never has to survive URL parsing.
+      PGHOST: db
+      PGPORT: "5432"
+      PGUSER: crate
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: crate
       LLM_BASE_URL: ${LLM_BASE_URL:-}
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_MODEL: ${LLM_MODEL:-}
@@ -55,3 +81,7 @@ services:
 
 volumes:
   pgdata:
+
+networks:
+  web:
+    external: true
