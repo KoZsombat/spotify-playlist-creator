@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { publicOrigin, spotifyConfigured } from "@/lib/auth";
+import { lastOAuthCallback, type OAuthCallbackRecord } from "@/lib/oauth-debug";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,6 +14,10 @@ type Status = {
   credentials?: CredentialStatus;
 };
 
+type StatusResponse = Status & {
+  lastCallback: OAuthCallbackRecord | null;
+};
+
 let cached: { at: number; status: Status } | undefined;
 
 /**
@@ -23,12 +28,14 @@ let cached: { at: number; status: Status } | undefined;
  * cannot drain the development quota.
  */
 export async function GET() {
+  const lastCallback = lastOAuthCallback();
+
   if (!spotifyConfigured) {
-    return NextResponse.json<Status>({ configured: false });
+    return NextResponse.json<StatusResponse>({ configured: false, lastCallback });
   }
 
   if (cached && Date.now() - cached.at < 60_000) {
-    return NextResponse.json(cached.status);
+    return NextResponse.json<StatusResponse>({ ...cached.status, lastCallback });
   }
 
   const clientId = process.env.SPOTIFY_CLIENT_ID ?? "";
@@ -65,5 +72,5 @@ export async function GET() {
   }
 
   cached = { at: Date.now(), status };
-  return NextResponse.json(status);
+  return NextResponse.json<StatusResponse>({ ...status, lastCallback });
 }
