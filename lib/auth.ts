@@ -15,14 +15,17 @@ export const spotifyConfigured = Boolean(
   process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET,
 );
 
-const baseURL = (process.env.BETTER_AUTH_URL ?? "http://127.0.0.1:3000").replace(
-  /\/+$/,
-  "",
-);
+export const publicOrigin = (
+  process.env.BETTER_AUTH_URL ?? "http://127.0.0.1:3000"
+).replace(/\/+$/, "");
 
 const authOptions = {
-  baseURL,
+  baseURL: publicOrigin,
   secret: process.env.BETTER_AUTH_SECRET,
+  // Better Auth's built-in error page is disabled in production. Send every
+  // callback/state failure back to the landing page, where the error is shown
+  // next to the redirect URI that Spotify must have registered.
+  onAPIError: { errorURL: `${publicOrigin}/?spotify_error=1` },
   database: getPool(),
   account: {
     // Tokens are encrypted with BETTER_AUTH_SECRET; always read them through

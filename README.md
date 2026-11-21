@@ -209,10 +209,11 @@ Tokens are stored encrypted (Better Auth `encryptOAuthTokens`) and always read t
 
 ## API
 
-All routes require a Spotify session except `/api/auth/*`.
+All routes require a Spotify session except `/api/auth/*` and `/api/sign-in/spotify`.
 
 | Route                               | Method      | Purpose                                    |
 | ----------------------------------- | ----------- | ------------------------------------------ |
+| `/api/sign-in/spotify`              | GET         | Starts Spotify OAuth; a plain link, so it works without client JS |
 | `/api/health`                        | GET         | DB-aware health probe for Launchpad                       |
 | `/api/generate`                     | POST        | `{description, seedIds, includeSeeds, limit}` → tracks + intent + stats |
 | `/api/interpret`                    | POST        | `{description}` → parsed intent only       |

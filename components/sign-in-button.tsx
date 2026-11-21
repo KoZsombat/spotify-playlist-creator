@@ -1,39 +1,22 @@
-"use client";
-
 import { LogIn } from "lucide-react";
-import { useState } from "react";
-import { signInWithSpotify } from "@/lib/auth-client";
 
+/**
+ * A real link, not a hydrated button: the OAuth flow starts from
+ * `/api/sign-in/spotify`, so sign-in works even when client JavaScript fails.
+ */
 export function SignInButton({
+  href = "/api/sign-in/spotify",
   label = "Continue with Spotify",
   className = "btn-primary w-full",
 }: {
+  href?: string;
   label?: string;
   className?: string;
 }) {
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
   return (
-    <div className="space-y-3">
-      <button
-        type="button"
-        className={className}
-        disabled={pending}
-        onClick={async () => {
-          setPending(true);
-          setError(null);
-          const result = await signInWithSpotify();
-          if (result.error) {
-            setError(result.error.message ?? "Spotify sign-in failed");
-            setPending(false);
-          }
-        }}
-      >
-        <LogIn className="size-4" />
-        {pending ? "Redirecting…" : label}
-      </button>
-      {error ? <p className="text-xs text-danger">{error}</p> : null}
-    </div>
+    <a href={href} className={className}>
+      <LogIn className="size-4" />
+      {label}
+    </a>
   );
 }

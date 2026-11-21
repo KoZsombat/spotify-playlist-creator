@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { redirect } from "next/navigation";
 import { SignInButton } from "@/components/sign-in-button";
-import { spotifyConfigured } from "@/lib/auth";
+import { publicOrigin, spotifyConfigured } from "@/lib/auth";
 import { getSession } from "@/lib/session";
 
 const STEPS = [
@@ -53,20 +53,25 @@ const FEATURES = [
   },
 ];
 
-const PUBLIC_ORIGIN = (process.env.BETTER_AUTH_URL ?? "http://127.0.0.1:3000").replace(
-  /\/+$/,
-  "",
-);
-const SPOTIFY_REDIRECT_URI = `${PUBLIC_ORIGIN}/api/auth/callback/spotify`;
+const SPOTIFY_REDIRECT_URI = `${publicOrigin}/api/auth/callback/spotify`;
 
 export default async function LandingPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string | string[]; spotify_error?: string }>;
 }) {
   const session = await getSession();
   if (session) redirect("/dashboard");
-  const { error } = await searchParams;
+  const params = await searchParams;
+  const rawErrors = Array.isArray(params.error)
+    ? params.error
+    : params.error
+      ? [params.error]
+      : [];
+  // `spotify_auth` was the old sentinel; keep old links working without
+  // printing a fake error code.
+  const errorCode = rawErrors.filter((code) => code !== "spotify_auth").at(-1);
+  const signInFailed = params.spotify_error !== undefined || rawErrors.length > 0;
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-6xl flex-col px-4 sm:px-6">
@@ -97,7 +102,10 @@ export default async function LandingPage({
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
               <div className="w-full sm:w-64">
-                <SignInButton />
+                {/* Absolute so a visitor who landed on http:// still starts
+                    OAuth on the canonical https origin, where the Secure
+                    state cookie is accepted. */}
+                <SignInButton href={`${publicOrigin}/api/sign-in/spotify`} />
               </div>
               <a
                 href="#how"
@@ -108,12 +116,25 @@ export default async function LandingPage({
               </a>
             </div>
 
-            {error ? (
-              <p className="mt-4 rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">
-                Spotify sign-in did not complete. The Spotify app must list{" "}
-                <span className="font-mono">{SPOTIFY_REDIRECT_URI}</span> exactly and
-                allowlist this account.
-              </p>
+            {signInFailed ? (
+              <div className="mt-4 rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-xs leading-relaxed text-danger">
+                <p>
+                  Spotify sign-in did not complete
+                  {errorCode ? ` (${errorCode})` : ""}. The Spotify app must register{" "}
+                  <span className="font-mono">{SPOTIFY_REDIRECT_URI}</span> exactly, and
+                  your account must be on the app&apos;s{" "}
+                  <span className="font-medium">User Management</span> list while the app
+                  is in development mode.
+                </p>
+                <a
+                  href="https://developer.spotify.com/dashboard"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-1 inline-block font-medium underline underline-offset-2"
+                >
+                  Open the Spotify dashboard
+                </a>
+              </div>
             ) : null}
           </div>
 
@@ -183,10 +204,13 @@ export default async function LandingPage({
                     </span>
                   </li>
                   <li>
-                    2. Add redirect URI{" "}
+                    2. Set Website{" "}
+                    <span className="font-mono text-accent-soft">{publicOrigin}</span>,
+                    Redirect URI{" "}
                     <span className="font-mono text-accent-soft">
                       {SPOTIFY_REDIRECT_URI}
-                    </span>
+                    </span>{" "}
+                    and APIs used <span className="font-medium">Web API</span>
                   </li>
                   <li>
                     3. Put the Client ID and Secret in{" "}
