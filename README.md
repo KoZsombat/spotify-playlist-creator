@@ -49,8 +49,10 @@ calls endpoints that are still available. Generation is search-driven:
    Spotify rejects `localhost` redirect URIs — use the loopback IP.
 3. Open the app → **Settings** and copy **Client ID** and **Client Secret**.
 4. Still in **Settings → User Management**, add the Spotify account(s) that will sign in.
-   New apps are in development mode and capped at 25 allowlisted users. For more users you must
-   request an extended quota from Spotify.
+   New apps start in development mode: the app owner needs Premium, and up to 5 authenticated
+   users can be allowlisted. Development mode cannot be switched off from the dashboard;
+   extended quota is only granted to eligible organizations (see
+   [Quota modes](https://developer.spotify.com/documentation/web-api/concepts/quota-modes)).
 
 ## 2. Configure environment
 
@@ -166,7 +168,7 @@ route independent from the panel.
    - Optional: `SPOTIFY_MARKET`, `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`.
 6. In the Spotify dashboard add the production redirect URI
    `https://crate.example.com/api/auth/callback/spotify` (keep the `127.0.0.1` one for local dev)
-   and allowlist every Spotify account that will sign in (development mode caps it at 25).
+   and allowlist every Spotify account that will sign in (development mode caps it at 5).
 7. Deploy. The first deployment builds the image on the panel host; compose `build:` services
    require a repository source, so do not switch the project to an inline compose file. A small
    VM may need more RAM for `next build`.
@@ -261,5 +263,7 @@ app/api/health/route.ts  Launchpad HTTP health probe (DB-aware)
   market: `SPOTIFY_MARKET` (default `US`) is used when the brief names no language.
 - Playlist contents are readable only for playlists you own or collaborate on; followed
   playlists appear as metadata but cannot be used as a track source.
-- Development mode allows 25 allowlisted Spotify accounts (grandfathered apps keep more).
+- Development mode allows up to 5 authenticated Spotify accounts on the app's allowlist and
+  requires the app owner to have Premium. Extended quota (unlimited users) is reserved for
+  eligible organizations, so individual projects stay capped at those 5 accounts.
 - The app is single-tenant per signed-in user; there is no admin surface.

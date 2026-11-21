@@ -219,7 +219,7 @@ export default async function LandingPage({
                   </li>
                   <li>
                     4. Add your Spotify account under the app&apos;s User Management
-                    (development mode caps it at 25 users)
+                    (development mode caps it at 5 users)
                   </li>
                 </ol>
               </div>
