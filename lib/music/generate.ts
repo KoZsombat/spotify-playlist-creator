@@ -127,6 +127,16 @@ function scoreCandidate(candidate: Candidate, context: ScoreContext): number {
   return score;
 }
 
+function observedArtistCap(tracks: readonly SpotifyTrack[]): number {
+  const perArtist = new Map<string, number>();
+  for (const track of tracks) {
+    const artistId = primaryArtist(track)?.id;
+    if (!artistId) continue;
+    perArtist.set(artistId, (perArtist.get(artistId) ?? 0) + 1);
+  }
+  return Math.max(0, ...perArtist.values());
+}
+
 function interleave(chosen: Scored[]): Scored[] {
   const buckets = new Map<QueryPlan["group"], Scored[]>();
   for (const item of chosen) {
@@ -172,6 +182,19 @@ export async function generateTracks({
   concurrency = 4,
 }: GenerateOptions): Promise<GeneratedPlaylist> {
   const seedTracks = includeSeeds ? seeds.slice(0, limit) : [];
+  if (seedTracks.length >= limit) {
+    // The user's own picks already fill the playlist; searching would only
+    // waste quota and could fail on a vague brief.
+    return {
+      tracks: seedTracks,
+      stats: {
+        queries: 0,
+        candidates: 0,
+        sourceTracks: seedTracks.length,
+        artistCap: observedArtistCap(seedTracks),
+      },
+    };
+  }
   const seedArtists = new Set(
     seeds.map((track) => normalizeName(primaryArtist(track)?.name ?? "")).filter(Boolean),
   );
@@ -303,13 +326,7 @@ export async function generateTracks({
   const tracks = interleave(chosen).map((item) => item.track).slice(0, limit);
 
   // Report the real observed maximum instead of the cap that happened to fill the list.
-  const perArtist = new Map<string, number>();
-  for (const track of tracks) {
-    const artistId = primaryArtist(track)?.id;
-    if (!artistId) continue;
-    perArtist.set(artistId, (perArtist.get(artistId) ?? 0) + 1);
-  }
-  const artistCap = Math.max(0, ...perArtist.values());
+  const artistCap = observedArtistCap(tracks);
 
   return {
     tracks,

@@ -200,7 +200,23 @@ export async function getLikedTracks(
   token: string,
   { limit = 50, offset = 0 } = {},
 ): Promise<SpotifyPage<{ track: SpotifyTrack | null; added_at: string | null }>> {
-  return spotifyFetch(token, "/me/tracks", { query: { limit, offset } });
+  const items: { track: SpotifyTrack | null; added_at: string | null }[] = [];
+  let cursor = offset;
+  let total = 0;
+  while (items.length < limit) {
+    const pageSize = Math.min(50, limit - items.length);
+    const data = await spotifyFetch<{
+      items: ({ track: SpotifyTrack | null; added_at: string | null } | null)[];
+      total: number;
+    }>(token, "/me/tracks", { query: { limit: pageSize, offset: cursor } });
+    total = data.total;
+    for (const entry of data.items) {
+      if (entry) items.push(entry);
+    }
+    if (data.items.length < pageSize) break;
+    cursor += pageSize;
+  }
+  return { items, total, next: null, offset, limit };
 }
 
 export async function createPlaylist(

@@ -161,6 +161,24 @@ describe("generateTracks", () => {
     expect(result.stats.sourceTracks).toBe(1);
   });
 
+  test("uses 200 picks without searching when they fill the playlist", async () => {
+    const intent = intentFrom("anything");
+    const calls: string[] = [];
+    const seeds = CATALOG.slice(0, 200) as SpotifyTrack[];
+    const result = await generateTracks({
+      intent,
+      source: fakeSource(calls),
+      seeds,
+      limit: 200,
+    });
+
+    expect(calls).toHaveLength(0);
+    expect(result.tracks.map((track) => track.id)).toEqual(
+      seeds.map((track) => track.id),
+    );
+    expect(result.stats.sourceTracks).toBe(200);
+  });
+
   test("is deterministic for identical input", async () => {
     const intent = intentFrom("late night synthwave drive");
     const first = await generateTracks({ intent, source: fakeSource(), limit: 50 });

@@ -6,7 +6,7 @@ import { PlayTrackButton } from "@/components/track-player";
 import { api } from "@/lib/client-utils";
 import type { PlaylistSummaryDTO, TrackDTO } from "@/lib/types";
 
-const MAX_SEEDS = 8;
+const MAX_SEEDS = 200;
 
 export function SeedPicker({
   seeds,
@@ -26,7 +26,15 @@ export function SeedPicker({
   const [selectedPlaylist, setSelectedPlaylist] = useState("");
   const [loadingSource, setLoadingSource] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const picksRef = useRef<HTMLUListElement>(null);
+  const lastSeedCount = useRef(seeds.length);
+
+  useEffect(() => {
+    const grew = seeds.length > lastSeedCount.current;
+    lastSeedCount.current = seeds.length;
+    const list = picksRef.current;
+    if (grew && list) list.scrollTop = list.scrollHeight;
+  }, [seeds.length]);
 
   useEffect(() => {
     if (mode !== "search") return;
@@ -64,12 +72,21 @@ export function SeedPicker({
   const add = (track: TrackDTO) => {
     if (seeds.length >= MAX_SEEDS || isSelected(track.id)) return;
     onChange([...seeds, track]);
-    // Clear the query and its dropdown so the next pick starts fresh.
-    setQuery("");
-    setResults([]);
-    setSearching(false);
     setError(null);
-    inputRef.current?.focus();
+  };
+
+  const addMany = (tracks: TrackDTO[]) => {
+    if (seeds.length >= MAX_SEEDS) return;
+    setError(null);
+    const next = [...seeds];
+    const ids = new Set(next.map((seed) => seed.id));
+    for (const track of tracks) {
+      if (next.length >= MAX_SEEDS) break;
+      if (ids.has(track.id)) continue;
+      ids.add(track.id);
+      next.push(track);
+    }
+    if (next.length !== seeds.length) onChange(next);
   };
 
   const remove = (id: string) => {
@@ -81,7 +98,7 @@ export function SeedPicker({
     setLoadingSource(true);
     setError(null);
     try {
-      const data = await api<{ tracks: TrackDTO[] }>("/api/library/liked");
+      const data = await api<{ tracks: TrackDTO[] }>("/api/library/liked?limit=200");
       setSourceTracks(data.tracks);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not load liked songs");
@@ -114,7 +131,7 @@ export function SeedPicker({
     setError(null);
     try {
       const data = await api<{ tracks: { track: TrackDTO }[] }>(
-        `/api/library/playlists/${playlistId}?limit=100`,
+        `/api/library/playlists/${playlistId}?limit=200`,
       );
       setSourceTracks(data.tracks.map((item) => item.track));
     } catch (cause) {
@@ -173,10 +190,14 @@ export function SeedPicker({
         </div>
         {seeds.length === 0 ? (
           <p className="mt-2 rounded-xl border border-dashed border-border px-3 py-4 text-center text-xs text-muted">
-            Optional. Add a few tracks you already want — the engine builds around them.
+            Optional. Add up to {MAX_SEEDS} tracks you already want — the engine
+            builds around them.
           </p>
         ) : (
-          <ul className="mt-2 space-y-1">
+          <ul
+            ref={picksRef}
+            className="mt-2 max-h-72 space-y-1 overflow-y-auto pr-1"
+          >
             {seeds.map((track) => (
               <li
                 key={track.id}
@@ -244,7 +265,6 @@ export function SeedPicker({
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
           <input
-            ref={inputRef}
             className="input pl-9"
             placeholder="Search Spotify tracks…"
             value={query}
@@ -289,16 +309,37 @@ export function SeedPicker({
       ) : null}
 
       {mode !== "playlist" || selectedPlaylist ? (
-        <div className="max-h-72 space-y-0.5 overflow-y-auto pr-1">
-          {visibleTracks.length === 0 && !loadingSource ? (
-            <p className="py-4 text-center text-xs text-muted">
-              {mode === "search"
-                ? "Type at least two characters to search."
-                : "Nothing to show here."}
-            </p>
-          ) : (
-            visibleTracks.map(renderResult)
-          )}
+        <div className="space-y-1">
+          {visibleTracks.length > 0 ? (
+            <div className="flex items-center justify-between px-2">
+              <p className="text-[10px] uppercase tracking-[0.18em] text-muted">
+                {visibleTracks.length}{" "}
+                {mode === "search" ? "results" : "tracks"}
+              </p>
+              <button
+                type="button"
+                className="text-[11px] text-muted underline-offset-2 hover:text-fg hover:underline disabled:opacity-40 disabled:hover:no-underline"
+                disabled={
+                  seeds.length >= MAX_SEEDS ||
+                  visibleTracks.every((track) => isSelected(track.id))
+                }
+                onClick={() => addMany(visibleTracks)}
+              >
+                Add all
+              </button>
+            </div>
+          ) : null}
+          <div className="max-h-72 space-y-0.5 overflow-y-auto pr-1">
+            {visibleTracks.length === 0 && !loadingSource ? (
+              <p className="py-4 text-center text-xs text-muted">
+                {mode === "search"
+                  ? "Type at least two characters to search."
+                  : "Nothing to show here."}
+              </p>
+            ) : (
+              visibleTracks.map(renderResult)
+            )}
+          </div>
         </div>
       ) : null}
     </div>

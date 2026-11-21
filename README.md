@@ -1,7 +1,8 @@
 # Crate — Spotify playlist creator
 
 Sign in with Spotify, set the playlist basics, describe the music in your own words, optionally
-add a few tracks you already chose, review the generated tracklist, and publish it to your account.
+add up to 200 tracks you already chose, review the generated tracklist, and publish it to your
+account.
 
 Built with Next.js 15 (App Router), Better Auth, Postgres, Tailwind v4 and Bun.
 
@@ -252,8 +253,8 @@ app/api/health/route.ts  Launchpad HTTP health probe (DB-aware)
 ## Known limits
 
 - Spotify search pages cap at 10 results, a query returns at most 100 hits, and playlist item
-  pages cap at 50; the client paginates. Playlists can request 10–200 tracks, but narrow briefs
-  can still yield fewer — the UI shows the real count.
+  pages cap at 50; the client paginates. Playlists can request 10–200 tracks, and you can pick
+  at most 200 seeds; narrow briefs can still yield fewer — the UI shows the real count.
 - Development mode ships a small daily API quota (`QUOTA_EXCEEDED`). Search results are cached
   for five minutes and large playlists spread across era slices, but heavy use can still exhaust
   it; the app then reports the quota and when it recovers.

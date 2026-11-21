@@ -15,7 +15,7 @@ const TRACK_ID = /^[A-Za-z0-9]{22}$/;
 
 const bodySchema = z.object({
   description: z.string().trim().min(3, "Describe the music first").max(1200),
-  seedIds: z.array(z.string().regex(TRACK_ID, "Invalid track id")).max(20).default([]),
+  seedIds: z.array(z.string().regex(TRACK_ID, "Invalid track id")).max(200).default([]),
   includeSeeds: z.boolean().default(true),
   limit: z.number().int().min(10).max(200).default(50),
 });

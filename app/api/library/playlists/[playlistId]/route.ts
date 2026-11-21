@@ -13,7 +13,7 @@ export async function GET(
   try {
     const { token } = await requireSpotify();
     const { playlistId } = await params;
-    const limit = Math.min(Number(new URL(request.url).searchParams.get("limit") ?? 100) || 100, 100);
+    const limit = Math.min(Number(new URL(request.url).searchParams.get("limit") ?? 200) || 200, 200);
     const page = await getPlaylistTracks(token, playlistId, { limit });
     const tracks = page.items
       .filter((item) => item.track)

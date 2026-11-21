@@ -63,6 +63,13 @@ export function CreateWizard() {
 
   const shownIntent = result?.intent ?? preview;
 
+  const setPickedSeeds = (next: TrackDTO[]) => {
+    setSeeds(next);
+    if (includeSeeds && next.length > size) {
+      setSize(Math.min(200, next.length));
+    }
+  };
+
   const canContinue =
     step === 0
       ? name.trim().length > 0
@@ -414,7 +421,7 @@ export function CreateWizard() {
                   off in review.
                 </p>
               </div>
-              <SeedPicker seeds={seeds} onChange={setSeeds} />
+              <SeedPicker seeds={seeds} onChange={setPickedSeeds} />
             </div>
           ) : null}
 
@@ -466,13 +473,26 @@ export function CreateWizard() {
                       type="checkbox"
                       className="size-4 accent-[var(--color-accent)]"
                       checked={includeSeeds}
-                      onChange={(event) => setIncludeSeeds(event.target.checked)}
+                      onChange={(event) => {
+                        const checked = event.target.checked;
+                        setIncludeSeeds(checked);
+                        if (checked && seeds.length > size) {
+                          setSize(Math.min(200, seeds.length));
+                        }
+                      }}
                     />
                     <span className="text-xs text-muted">
                       Include my {seeds.length} pick{seeds.length === 1 ? "" : "s"} in the
                       final {size}
                     </span>
                   </label>
+
+                  {includeSeeds && seeds.length > size ? (
+                    <p className="rounded-lg border border-warn/30 bg-warn/[0.06] px-3 py-2 text-[11px] text-warn">
+                      Only the first {size} of your {seeds.length} picks fit. Raise the
+                      playlist size to include them all.
+                    </p>
+                  ) : null}
 
                   <button
                     type="button"

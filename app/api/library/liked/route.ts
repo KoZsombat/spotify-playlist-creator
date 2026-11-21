@@ -6,10 +6,14 @@ import { requireSpotify, toHttpError } from "@/lib/spotify/provider";
 
 export const runtime = "nodejs";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const { token } = await requireSpotify();
-    const page = await getLikedTracks(token, { limit: 50 });
+    const limit = Math.min(
+      Number(new URL(request.url).searchParams.get("limit") ?? 200) || 200,
+      200,
+    );
+    const page = await getLikedTracks(token, { limit });
     const tracks = page.items
       .filter((item) => item.track)
       .map((item) => toTrackDTO(item.track!));
