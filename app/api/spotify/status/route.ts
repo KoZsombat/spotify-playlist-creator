@@ -1,6 +1,8 @@
+import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { publicOrigin, spotifyConfigured } from "@/lib/auth";
 import { lastOAuthCallback, type OAuthCallbackRecord } from "@/lib/oauth-debug";
+import { getSession } from "@/lib/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,11 +16,22 @@ type Status = {
   credentials?: CredentialStatus;
 };
 
+type SessionInfo = {
+  id: string;
+  email: string;
+};
+
 type StatusResponse = Status & {
   lastCallback: OAuthCallbackRecord | null;
+  session: SessionInfo | null;
+  sessionCookie: boolean;
 };
 
 let cached: { at: number; status: Status } | undefined;
+
+function json(body: StatusResponse) {
+  return NextResponse.json(body, { headers: { "Cache-Control": "no-store" } });
+}
 
 /**
  * Operational probe for the deployed Spotify app configuration. It never
@@ -28,14 +41,24 @@ let cached: { at: number; status: Status } | undefined;
  * cannot drain the development quota.
  */
 export async function GET() {
-  const lastCallback = lastOAuthCallback();
+  const requestHeaders = await headers();
+  const cookieHeader = requestHeaders.get("cookie") ?? "";
+  const sessionCookie = /(?:^|;\s*)(?:__Secure-)?better-auth\.session_token=/.test(
+    cookieHeader,
+  );
+  const session = await getSession().catch(() => null);
+  const context = {
+    lastCallback: lastOAuthCallback(),
+    session: session ? { id: session.user.id, email: session.user.email } : null,
+    sessionCookie,
+  };
 
   if (!spotifyConfigured) {
-    return NextResponse.json<StatusResponse>({ configured: false, lastCallback });
+    return json({ configured: false, ...context });
   }
 
   if (cached && Date.now() - cached.at < 60_000) {
-    return NextResponse.json<StatusResponse>({ ...cached.status, lastCallback });
+    return json({ ...cached.status, ...context });
   }
 
   const clientId = process.env.SPOTIFY_CLIENT_ID ?? "";
@@ -72,5 +95,5 @@ export async function GET() {
   }
 
   cached = { at: Date.now(), status };
-  return NextResponse.json<StatusResponse>({ ...status, lastCallback });
+  return json({ ...status, ...context });
 }
