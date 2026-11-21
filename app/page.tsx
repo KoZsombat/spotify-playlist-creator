@@ -58,7 +58,11 @@ const SPOTIFY_REDIRECT_URI = `${publicOrigin}/api/auth/callback/spotify`;
 export default async function LandingPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string | string[]; spotify_error?: string }>;
+  searchParams: Promise<{
+    error?: string | string[];
+    error_description?: string | string[];
+    spotify_error?: string;
+  }>;
 }) {
   const session = await getSession();
   if (session) redirect("/dashboard");
@@ -71,6 +75,9 @@ export default async function LandingPage({
   // `spotify_auth` was the old sentinel; keep old links working without
   // printing a fake error code.
   const errorCode = rawErrors.filter((code) => code !== "spotify_auth").at(-1);
+  const errorDescription = Array.isArray(params.error_description)
+    ? params.error_description[0]
+    : params.error_description;
   const signInFailed = params.spotify_error !== undefined || rawErrors.length > 0;
 
   return (
@@ -126,14 +133,27 @@ export default async function LandingPage({
                   <span className="font-medium">User Management</span> list while the app
                   is in development mode.
                 </p>
-                <a
-                  href="https://developer.spotify.com/dashboard"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-1 inline-block font-medium underline underline-offset-2"
-                >
-                  Open the Spotify dashboard
-                </a>
+                {errorDescription ? (
+                  <p className="mt-1 break-words font-mono text-[11px]">
+                    {errorDescription}
+                  </p>
+                ) : null}
+                <p className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                  <a
+                    href="https://developer.spotify.com/dashboard"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-medium underline underline-offset-2"
+                  >
+                    Open the Spotify dashboard
+                  </a>
+                  <a
+                    href="/api/spotify/status"
+                    className="font-medium underline underline-offset-2"
+                  >
+                    Check the deployed credentials
+                  </a>
+                </p>
               </div>
             ) : null}
           </div>
