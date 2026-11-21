@@ -44,7 +44,7 @@ export default async function DashboardPage() {
           </h1>
           <p className="mt-2 max-w-xl text-sm text-muted">
             Describe a vibe in your own words, anchor it with a few tracks, and publish a
-            50-song playlist to Spotify.
+            playlist of up to 200 tracks to Spotify.
           </p>
         </div>
         <Link href="/create" className="btn-primary shrink-0">
@@ -96,7 +96,7 @@ export default async function DashboardPage() {
             <p className="text-sm font-medium">Nothing here yet.</p>
             <p className="max-w-md text-xs leading-relaxed text-muted">
               Your first playlist takes about a minute: pick a name, describe the music,
-              and review the 50 tracks before publishing.
+              and review the tracks before publishing.
             </p>
             <Link href="/create" className="btn-ghost btn-sm">
               Start the creator

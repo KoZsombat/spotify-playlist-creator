@@ -4,7 +4,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Crate — describe it, press play",
   description:
-    "Sign in with Spotify, describe the music you want, and get a 50-track playlist built around your picks.",
+    "Sign in with Spotify, describe the music you want, and get a 10–200 track playlist built around your picks.",
   icons: {
     icon: "/logo.svg",
     shortcut: "/logo.svg",

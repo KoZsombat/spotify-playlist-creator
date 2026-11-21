@@ -1,7 +1,9 @@
 import {
   ArrowRight,
   ListChecks,
+  Play,
   ShieldCheck,
+  SlidersHorizontal,
   Sparkles,
   Users,
   Wand2,
@@ -51,6 +53,16 @@ const FEATURES = [
     title: "Nothing publishes without you",
     body: "Every generated track is reviewable and removable before anything is written to your Spotify account.",
   },
+  {
+    icon: Play,
+    title: "Hear it before it lands",
+    body: "Play 30-second Spotify previews inline while you review, and drop anything that does not fit before publishing.",
+  },
+  {
+    icon: SlidersHorizontal,
+    title: "10 to 200 tracks",
+    body: "Build a 10-track sampler or a 200-track marathon. Sizing is per playlist and every track stays reviewable.",
+  },
 ];
 
 const SPOTIFY_REDIRECT_URI = `${publicOrigin}/api/auth/callback/spotify`;
@@ -99,7 +111,7 @@ export default async function LandingPage({
             <p className="eyebrow">Describe · Generate · Publish</p>
             <h1 className="mt-4 text-4xl font-semibold leading-[1.05] tracking-tight sm:text-6xl">
               Say what you want to hear.
-              <span className="block text-accent">Get 50 tracks.</span>
+              <span className="block text-accent">Get up to 200 tracks.</span>
             </h1>
             <p className="mt-5 max-w-xl text-base leading-relaxed text-muted">
               Sign in with Spotify, describe a vibe, and drop in a few songs you already
@@ -188,7 +200,7 @@ export default async function LandingPage({
 
             <div className="mt-6 grid grid-cols-3 divide-x divide-border rounded-xl border border-border bg-bg/50 text-center">
               {[
-                ["50", "tracks"],
+                ["10–200", "tracks"],
                 ["2×", "per artist"],
                 ["1", "click to publish"],
               ].map(([value, label]) => (
@@ -225,20 +237,22 @@ export default async function LandingPage({
                   </li>
                   <li>
                     2. Set Website{" "}
-                    <span className="font-mono text-accent-soft">{publicOrigin}</span>,
-                    Redirect URI{" "}
-                    <span className="font-mono text-accent-soft">
-                      {SPOTIFY_REDIRECT_URI}
-                    </span>{" "}
+                    <span className="font-mono text-accent-soft">{publicOrigin}</span>{" "}
                     and APIs used <span className="font-medium">Web API</span>
                   </li>
                   <li>
-                    3. Put the Client ID and Secret in{" "}
+                    3. Add Redirect URI{" "}
+                    <span className="font-mono text-accent-soft">
+                      {SPOTIFY_REDIRECT_URI}
+                    </span>
+                  </li>
+                  <li>
+                    4. Put the Client ID and Secret in{" "}
                     <span className="font-mono text-accent-soft">.env</span>, then
                     restart the dev server
                   </li>
                   <li>
-                    4. Add your Spotify account under the app&apos;s User Management
+                    5. Add your Spotify account under the app&apos;s User Management
                     (development mode caps it at 5 users)
                   </li>
                 </ol>
@@ -264,7 +278,7 @@ export default async function LandingPage({
 
         <section className="py-12">
           <h2 className="text-2xl font-semibold tracking-tight">
-            Not a random 50-song shuffle
+            Not a random shuffle
           </h2>
           <div className="mt-6 grid gap-3 sm:grid-cols-2">
             {FEATURES.map((feature) => (
