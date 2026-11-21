@@ -12,7 +12,7 @@ import {
   Wand2,
 } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { TrackRow } from "@/components/track-row";
 import { api } from "@/lib/client-utils";
 import { interpretHeuristic, summarizeIntent } from "@/lib/music/intent";
@@ -35,6 +35,93 @@ const SUGGESTIONS = [
 
 type Created = PlaylistSummaryDTO & { warning: string | null; appended: number };
 
+const DRAFT_KEY = "crate:create-draft:v1";
+const DRAFT_VERSION = 1;
+
+type Draft = {
+  version: number;
+  step: number;
+  name: string;
+  description: string;
+  isPublic: boolean;
+  collaborative: boolean;
+  brief: string;
+  seeds: TrackDTO[];
+  includeSeeds: boolean;
+  size: number;
+  appendTo: string;
+  result: GenerateResult | null;
+  tracks: TrackDTO[];
+};
+
+function isTrackDTO(value: unknown): value is TrackDTO {
+  if (!value || typeof value !== "object") return false;
+  const track = value as Partial<TrackDTO>;
+  return (
+    typeof track.id === "string" &&
+    typeof track.name === "string" &&
+    typeof track.artists === "string" &&
+    typeof track.uri === "string"
+  );
+}
+
+function isGenerateResult(value: unknown): value is GenerateResult {
+  if (!value || typeof value !== "object") return false;
+  const result = value as Partial<GenerateResult>;
+  const intent = result.intent;
+  return (
+    Boolean(intent) &&
+    typeof intent?.summary === "string" &&
+    Array.isArray(intent?.genres) &&
+    Array.isArray(intent?.moods) &&
+    Array.isArray(intent?.occasions) &&
+    Array.isArray(intent?.languages) &&
+    Array.isArray(intent?.keywords) &&
+    Array.isArray(intent?.excludeKeywords) &&
+    Array.isArray(intent?.excludeTags) &&
+    Array.isArray(intent?.includeArtists) &&
+    Array.isArray(intent?.excludeArtists) &&
+    Array.isArray(intent?.evidence) &&
+    typeof intent?.energy === "number" &&
+    typeof result.stats === "object" &&
+    result.stats !== null &&
+    typeof result.stats.queries === "number"
+  );
+}
+
+function readDraft(): Draft | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(DRAFT_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw) as Partial<Draft>;
+    if (data.version !== DRAFT_VERSION) return null;
+    const isPublic = data.isPublic === true;
+    return {
+      version: DRAFT_VERSION,
+      step: Math.min(3, Math.max(0, Math.trunc(Number(data.step) || 0))),
+      name: typeof data.name === "string" ? data.name.slice(0, 100) : "",
+      description:
+        typeof data.description === "string" ? data.description.slice(0, 300) : "",
+      isPublic,
+      collaborative: data.collaborative === true && !isPublic,
+      brief: typeof data.brief === "string" ? data.brief.slice(0, 1200) : "",
+      seeds: Array.isArray(data.seeds)
+        ? data.seeds.filter(isTrackDTO).slice(0, 200)
+        : [],
+      includeSeeds: data.includeSeeds !== false,
+      size: Math.min(200, Math.max(10, Math.trunc(Number(data.size) || 50))),
+      appendTo: typeof data.appendTo === "string" ? data.appendTo : "",
+      result: isGenerateResult(data.result) ? data.result : null,
+      tracks: Array.isArray(data.tracks)
+        ? data.tracks.filter(isTrackDTO).slice(0, 200)
+        : [],
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function CreateWizard() {
   const [step, setStep] = useState(0);
   const [name, setName] = useState("");
@@ -54,6 +141,8 @@ export function CreateWizard() {
   const [publishing, setPublishing] = useState(false);
   const [created, setCreated] = useState<Created | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [draftLoaded, setDraftLoaded] = useState(false);
+  const draftRef = useRef<Draft | null>(null);
 
   const preview = useMemo(() => {
     const intent = interpretHeuristic(brief);
@@ -88,6 +177,92 @@ export function CreateWizard() {
       setLibrary([]);
     }
   };
+
+  useEffect(() => {
+    const draft = readDraft();
+    if (draft) {
+      setStep(draft.step);
+      setName(draft.name);
+      setDescription(draft.description);
+      setIsPublic(draft.isPublic);
+      setCollaborative(draft.collaborative);
+      setBrief(draft.brief);
+      setSeeds(draft.seeds);
+      setIncludeSeeds(draft.includeSeeds);
+      setSize(draft.size);
+      setAppendTo(draft.appendTo);
+      setResult(draft.result);
+      setTracks(draft.tracks);
+      if (draft.step === 3) void loadLibrary();
+    }
+    setDraftLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    if (!draftLoaded) return;
+    if (created) {
+      draftRef.current = null;
+      try {
+        window.localStorage.removeItem(DRAFT_KEY);
+      } catch {
+        // Storage can be unavailable in private mode; the creation still works.
+      }
+      return;
+    }
+    const draft: Draft = {
+      version: DRAFT_VERSION,
+      step,
+      name,
+      description,
+      isPublic,
+      collaborative,
+      brief,
+      seeds,
+      includeSeeds,
+      size,
+      appendTo,
+      result: result ? { ...result, tracks: [] } : null,
+      tracks,
+    };
+    draftRef.current = draft;
+    const timer = window.setTimeout(() => {
+      try {
+        window.localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+      } catch {
+        // Quota or disabled storage should not break the wizard.
+      }
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [
+    draftLoaded,
+    created,
+    step,
+    name,
+    description,
+    isPublic,
+    collaborative,
+    brief,
+    seeds,
+    includeSeeds,
+    size,
+    appendTo,
+    result,
+    tracks,
+  ]);
+
+  useEffect(() => {
+    const flush = () => {
+      const draft = draftRef.current;
+      if (!draft) return;
+      try {
+        window.localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+      } catch {
+        // Ignore disabled storage.
+      }
+    };
+    window.addEventListener("pagehide", flush);
+    return () => window.removeEventListener("pagehide", flush);
+  }, []);
 
   const goNext = async () => {
     setError(null);
@@ -155,6 +330,11 @@ export function CreateWizard() {
   };
 
   const reset = () => {
+    try {
+      window.localStorage.removeItem(DRAFT_KEY);
+    } catch {
+      // Ignore disabled storage.
+    }
     setStep(0);
     setName("");
     setDescription("");

@@ -34,7 +34,8 @@ calls endpoints that are still available. Generation is search-driven:
    vibes do not clump.
 5. **Review & publish** — playlist size is configurable from 10 to 200 tracks; nothing is written
    to Spotify until the user presses create. Then the app creates the playlist, adds at most 100
-   tracks per request, and stores a local record.
+   tracks per request, and stores a local record. The wizard draft (basics, brief, picks and any
+   generated tracks) is kept in `localStorage` and restored on reload; publishing clears it.
 
 ## Prerequisites
 
