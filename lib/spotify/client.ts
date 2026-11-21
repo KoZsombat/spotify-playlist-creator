@@ -29,6 +29,27 @@ type RequestOptions = {
   query?: Record<string, string | number | undefined>;
 };
 
+const TRACK_CACHE_TTL_MS = 10 * 60 * 1000;
+const TRACK_CACHE_MAX = 1000;
+/**
+ * Seed picks are served to the browser by the search, liked-songs and playlist
+ * routes, then sent back as ids. Reusing those objects keeps a large pick list
+ * from turning into hundreds of extra /tracks requests.
+ */
+const trackCache = new Map<string, { track: SpotifyTrack; expires: number }>();
+
+function cacheTracks(tracks: readonly (SpotifyTrack | null | undefined)[]): void {
+  const now = Date.now();
+  for (const track of tracks) {
+    if (!track?.id) continue;
+    if (trackCache.size >= TRACK_CACHE_MAX) {
+      const oldest = trackCache.keys().next().value;
+      if (oldest) trackCache.delete(oldest);
+    }
+    trackCache.set(track.id, { track, expires: now + TRACK_CACHE_TTL_MS });
+  }
+}
+
 async function spotifyFetch<T>(
   token: string,
   path: string,
@@ -41,15 +62,27 @@ async function spotifyFetch<T>(
 
   const MAX_ATTEMPTS = 4;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    const response = await fetch(url, {
-      method,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
-      },
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-      cache: "no-store",
-    });
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+        },
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+        cache: "no-store",
+      });
+    } catch {
+      // A dropped connection or timeout should not lose a whole playlist.
+      if (attempt === MAX_ATTEMPTS - 1 || method !== "GET") {
+        throw new SpotifyError(502, "Could not reach Spotify. Try again in a moment.");
+      }
+      const { promise, resolve } = Promise.withResolvers<void>();
+      setTimeout(resolve, 250 * 2 ** attempt);
+      await promise;
+      continue;
+    }
 
     if (response.status === 429) {
       const payload = (await response.clone().json().catch(() => null)) as {
@@ -68,6 +101,13 @@ async function spotifyFetch<T>(
       const retryAfter = Number(response.headers.get("Retry-After") ?? "1");
       const { promise, resolve } = Promise.withResolvers<void>();
       setTimeout(resolve, Math.min(Math.max(retryAfter, 1), 20) * 1000);
+      await promise;
+      continue;
+    }
+
+    if (method === "GET" && response.status >= 500 && attempt < MAX_ATTEMPTS - 1) {
+      const { promise, resolve } = Promise.withResolvers<void>();
+      setTimeout(resolve, 250 * 2 ** attempt);
       await promise;
       continue;
     }
@@ -122,6 +162,7 @@ export async function searchTracks(
     if (items.length < pageSize) break;
     cursor += pageSize;
   }
+  cacheTracks(tracks);
   return tracks;
 }
 
@@ -131,9 +172,14 @@ export async function getTracks(
   ids: readonly string[],
 ): Promise<SpotifyTrack[]> {
   const unique = [...new Set(ids)].filter(Boolean);
+  const now = Date.now();
   const tracks = await mapLimit(unique, 6, async (id) => {
+    const hit = trackCache.get(id);
+    if (hit && hit.expires > now) return hit.track;
     try {
-      return await spotifyFetch<SpotifyTrack>(token, `/tracks/${id}`);
+      const track = await spotifyFetch<SpotifyTrack>(token, `/tracks/${id}`);
+      cacheTracks([track]);
+      return track;
     } catch (error) {
       if (error instanceof SpotifyError && error.status === 404) return null;
       throw error;
@@ -193,6 +239,7 @@ export async function getPlaylistTracks(
     if (data.items.length < pageSize) break;
     cursor += pageSize;
   }
+  cacheTracks(items.map((item) => item.track));
   return { items, total, next: null, offset, limit };
 }
 
@@ -216,6 +263,7 @@ export async function getLikedTracks(
     if (data.items.length < pageSize) break;
     cursor += pageSize;
   }
+  cacheTracks(items.map((item) => item.track));
   return { items, total, next: null, offset, limit };
 }
 
